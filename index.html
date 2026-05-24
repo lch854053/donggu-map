@@ -138,8 +138,9 @@
   }
   .info-card .ic-top { padding: 12px 14px 10px; }
   .info-card .ic-cat {
-    display: inline-block; font-size: 11px; color: white;
-    padding: 2px 8px; border-radius: 10px; margin-bottom: 6px;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: white;
+    padding: 3px 9px 3px 4px; border-radius: 12px; margin-bottom: 6px;
   }
   .info-card .ic-name { font-size: 15px; font-weight: bold; line-height: 1.3; }
   .info-card .ic-addr { font-size: 12px; color: #888; margin-top: 4px; line-height: 1.4; }
@@ -170,15 +171,40 @@
 
   /* 모바일 */
   @media (max-width: 760px) {
+    #body { flex-direction: column; }
+    /* 패널을 하단 시트로 */
     #panel {
-      position: absolute; inset: 0 auto 0 0; height: 100%;
-      box-shadow: var(--shadow);
+      position: absolute; left: 0; right: 0; bottom: 0; top: auto;
+      width: 100%; height: 45vh; max-height: 80vh;
+      border-right: none; border-top: 1px solid var(--line);
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -4px 24px rgba(60,40,20,0.18);
+      transition: transform 0.3s ease;
     }
-    #panel.hidden { transform: translateX(-100%); }
-    #panelToggle { display: flex; }
+    /* 손잡이 */
+    #panel::before {
+      content: ''; position: absolute; top: 8px; left: 50%;
+      transform: translateX(-50%);
+      width: 40px; height: 4px; border-radius: 2px;
+      background: #d8d2c5;
+    }
+    #sheetHandle {
+      display: block; height: 22px; flex-shrink: 0; cursor: grab;
+    }
+    /* 접힌 상태: 검색창 높이만 남기고 내려감 */
+    #panel.collapsed { transform: translateY(calc(45vh - 96px)); }
+    .search-box { padding: 10px 14px; }
+    #map-wrap { flex: 1; height: 55vh; }
+    #panelToggle { display: none; }   /* 하단 시트에선 토글 버튼 불필요 */
+    #locBtn { bottom: calc(45vh + 16px); transition: bottom 0.3s ease; }
+    body.sheet-collapsed #locBtn { bottom: 112px; }
     header h1 { font-size: 16px; }
     header .sub { display: none; }
+    .cat-chip { font-size: 13px; padding: 6px 11px; }
+    .list-item { padding: 12px 14px; }
+    .list-item .name { font-size: 15px; }
   }
+  #sheetHandle { display: none; }
 </style>
 </head>
 <body>
@@ -190,6 +216,7 @@
   </header>
   <div id="body">
     <aside id="panel">
+      <div id="sheetHandle"></div>
       <div class="search-box">
         <input type="text" id="search" placeholder="🔍 가맹점 이름 검색" autocomplete="off">
       </div>
@@ -219,7 +246,8 @@
 
 <!-- 데이터 -->
 <script src="shops.js"></script>
-<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=b31f8087d96176cdca15a25f8180faf6&libraries=clusterer&autoload=false"></script>
+<!-- 카카오맵 SDK: 아래 YOUR_JS_KEY를 본인의 JavaScript 키로 교체하세요 -->
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_JS_KEY&libraries=clusterer&autoload=false"></script>
 <script>
 const CATS = window.__SHOPS__.cats;
 const DATA = window.__SHOPS__.data;
@@ -227,6 +255,14 @@ const CAT_COLORS = ['#e8590c','#1971c2','#2f9e44','#9c36b5','#0c8599','#e8a000',
 const catIndex = {};
 CATS.forEach((c,i)=>catIndex[c]=i);
 function colorOf(cat){ return CAT_COLORS[catIndex[cat] % CAT_COLORS.length]; }
+// 작은 원형 아이콘 배지 (목록/필터/정보창용)
+function iconBadge(cat, size){
+  size = size || 18;
+  const color = colorOf(cat);
+  const icon = (typeof CAT_ICONS !== 'undefined' && CAT_ICONS[cat]) || '<circle cx="8" cy="8" r="3" fill="#fff"/>';
+  return `<span style="display:inline-flex;width:${size}px;height:${size}px;border-radius:50%;background:${color};align-items:center;justify-content:center;flex-shrink:0;">
+    <svg width="${size-4}" height="${size-4}" viewBox="0 0 16 16">${icon}</svg></span>`;
+}
 
 let map, clusterer, infoOverlay;
 let activeCats = new Set(CATS);
@@ -280,7 +316,7 @@ function buildMarkers(){
   DATA.forEach(shop => {
     const marker = new kakao.maps.Marker({
       position: new kakao.maps.LatLng(shop.la, shop.lo),
-      image: pinImage(colorOf(shop.c)),
+      image: pinImage(shop.c),
       title: shop.n
     });
     kakao.maps.event.addListener(marker, 'click', ()=>openInfo(shop, marker));
@@ -290,18 +326,40 @@ function buildMarkers(){
   });
 }
 
-// 색상별 SVG 핀 (캐시)
+// 업종별 아이콘 (16x16 viewBox 기준 SVG path, 흰색으로 그려짐)
+const CAT_ICONS = {
+  '음식점':        '<path d="M3 1v5a2 2 0 0 0 2 2v7h1V1h-.6v4.5H5V1h-.6v4.5h-.8V1H3zm8 0c-1.2 0-2 1.6-2 3.6 0 1.6.7 2.9 1.5 3.3V15h1V1h-.5z" fill="#fff"/>',
+  '의류/잡화':     '<path d="M6 1L3 3l1 2 1-.6V15h6V4.4l1 .6 1-2-3-2c0 1.1-.9 2-2 2s-2-.9-2-2z" fill="#fff"/>',
+  '용역서비스':    '<path d="M11.5 2.5a2.5 2.5 0 0 0-3.3 3.1L3 10.8 5.2 13l5.2-5.2a2.5 2.5 0 0 0 3.1-3.3l-1.6 1.6-1.4-.3-.3-1.4 1.3-1.5z" fill="#fff"/>',
+  '마트/쇼핑':     '<path d="M3 3h1.5l.4 2M5 5l1 6h6l1.5-5H5zm1.5 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm5 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" fill="#fff"/>',
+  '레포츠/문화/취미': '<circle cx="8" cy="8" r="6.2" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M3 4.5C5 7 5 9 3 11.5M13 4.5C11 7 11 9 13 11.5" fill="none" stroke="#fff" stroke-width="1.2"/>',
+  '제과/커피':     '<path d="M3 4h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V4zm8 1h1.5a1.5 1.5 0 0 1 0 3H11M3 13h9" stroke="#fff" stroke-width="1.2" fill="none"/>',
+  '뷰티':          '<path d="M8 1.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 9.7l-3.2 1.7.6-3.6L2.8 5.3l3.6-.5z" fill="#fff"/>',
+  '학원/교육':     '<path d="M8 2.5L1.5 5.5 8 8.5l6.5-3zM4.5 7.5v3c0 .9 1.6 1.7 3.5 1.7s3.5-.8 3.5-1.7v-3M13.5 6v3.5" stroke="#fff" stroke-width="1.2" fill="none" stroke-linejoin="round"/>',
+  '의료':          '<path d="M6.5 2h3v4.5H14v3H9.5V14h-3V9.5H2v-3h4.5z" fill="#fff"/>',
+  '생활':          '<path d="M8 1L2 6v8h4v-4h4v4h4V6z" fill="#fff"/>',
+  '전자/사무기기': '<rect x="2.5" y="3" width="11" height="7" rx="1" fill="none" stroke="#fff" stroke-width="1.3"/><path d="M6 13h4M8 10v3" stroke="#fff" stroke-width="1.2"/>',
+  '기타':          '<circle cx="4" cy="8" r="1.4" fill="#fff"/><circle cx="8" cy="8" r="1.4" fill="#fff"/><circle cx="12" cy="8" r="1.4" fill="#fff"/>',
+  '자동차/주유/정비': '<path d="M3 9l1-3.5C4.2 4.6 4.8 4 5.6 4h4.8c.8 0 1.4.6 1.6 1.5L13 9v3h-1.5v-1.5h-7V12H3zm2 0h6l-.6-2.5H5.6z" fill="#fff"/>',
+  '숙박':          '<path d="M2 5v8h1.5v-2h9v2H14V8c0-1.1-.9-2-2-2H7v3H3.5V5zm2 1.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z" fill="#fff"/>'
+};
+
+// 업종별 SVG 핀 (캐시)
 const pinCache = {};
-function pinImage(color){
-  if(pinCache[color]) return pinCache[color];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">
-    <path d="M13 0C5.8 0 0 5.8 0 13c0 9.2 13 21 13 21s13-11.8 13-21C26 5.8 20.2 0 13 0z" fill="${color}"/>
-    <circle cx="13" cy="13" r="5" fill="white"/></svg>`;
+function pinImage(cat){
+  if(pinCache[cat]) return pinCache[cat];
+  const color = colorOf(cat);
+  const icon = CAT_ICONS[cat] || '<circle cx="8" cy="8" r="3" fill="#fff"/>';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 11.3 16 26 16 26s16-14.7 16-26C32 7.2 24.8 0 16 0z" fill="${color}"/>
+    <circle cx="16" cy="16" r="11" fill="rgba(255,255,255,0.18)"/>
+    <g transform="translate(8,8)">${icon}</g></svg>`;
   const url = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
-  const img = new kakao.maps.MarkerImage(url, new kakao.maps.Size(26,34), {offset:new kakao.maps.Point(13,34)});
-  pinCache[color] = img;
+  const img = new kakao.maps.MarkerImage(url, new kakao.maps.Size(32,42), {offset:new kakao.maps.Point(16,42)});
+  pinCache[cat] = img;
   return img;
 }
+
 
 function openInfo(shop, marker){
   if(infoOverlay) infoOverlay.setMap(null);
@@ -314,7 +372,7 @@ function openInfo(shop, marker){
   html.innerHTML = `
     <button class="info-close">×</button>
     <div class="ic-top">
-      <span class="ic-cat" style="background:${color}">${shop.c}</span>
+      <span class="ic-cat" style="background:${color}"><svg width="13" height="13" viewBox="0 0 16 16" style="margin-right:1px">${(CAT_ICONS[shop.c]||'<circle cx="8" cy="8" r="3" fill="#fff"/>')}</svg>${shop.c}</span>
       <div class="ic-name">${escapeHtml(shop.n)}</div>
       <div class="ic-addr">${escapeHtml(shop.a)}</div>
     </div>
@@ -339,7 +397,7 @@ function buildFilters(){
   const grid = document.getElementById('catGrid');
   grid.innerHTML = CATS.map(c=>`
     <div class="cat-chip" data-cat="${escapeAttr(c)}">
-      <span class="dot" style="background:${colorOf(c)}"></span>
+      ${iconBadge(c, 16)}
       <span class="name">${escapeHtml(c)}</span>
       <span class="cnt">${counts[c]||0}</span>
     </div>`).join('');
@@ -380,7 +438,7 @@ function renderList(shops){
   const shown = shops.slice(0, listLimit);
   list.innerHTML = shown.map((s,i)=>`
     <div class="list-item" data-i="${i}">
-      <div class="name"><span class="dot" style="background:${colorOf(s.c)}"></span>${escapeHtml(s.n)}</div>
+      <div class="name">${iconBadge(s.c, 18)}${escapeHtml(s.n)}</div>
       <div class="meta">${escapeHtml(s.c)} · ${escapeHtml(s.a)}</div>
     </div>`).join('') +
     (shops.length > listLimit ? `<div class="list-more" id="loadMore">+ ${shops.length-listLimit}곳 더 보기</div>` : '');
@@ -390,7 +448,7 @@ function renderList(shops){
       map.setLevel(3);
       map.panTo(new kakao.maps.LatLng(s.la, s.lo));
       openInfo(s, s._marker);
-      if(window.innerWidth <= 760) document.getElementById('panel').classList.add('hidden');
+      if(window.innerWidth <= 760) collapseSheet(true);
     };
   });
   const more = document.getElementById('loadMore');
@@ -413,10 +471,50 @@ function bindUI(){
     document.querySelectorAll('.cat-chip').forEach(c=>c.classList.add('off'));
     applyFilter();
   };
-  document.getElementById('panelToggle').onclick = ()=>{
-    document.getElementById('panel').classList.toggle('hidden');
-  };
   document.getElementById('locBtn').onclick = locateMe;
+  setupSheet();
+}
+
+// 하단 시트 (모바일) 제어
+function collapseSheet(collapse){
+  const panel = document.getElementById('panel');
+  if(collapse){ panel.classList.add('collapsed'); document.body.classList.add('sheet-collapsed'); }
+  else { panel.classList.remove('collapsed'); document.body.classList.remove('sheet-collapsed'); }
+}
+function setupSheet(){
+  const handle = document.getElementById('sheetHandle');
+  const panel = document.getElementById('panel');
+  if(!handle) return;
+
+  // 탭으로 토글
+  let dragStartY = null, moved = false;
+  const onDown = (y)=>{ dragStartY = y; moved = false; };
+  const onMove = (y)=>{
+    if(dragStartY === null) return;
+    if(Math.abs(y - dragStartY) > 8) moved = true;
+  };
+  const onUp = (y)=>{
+    if(dragStartY === null) return;
+    if(moved){
+      // 위로 끌면 펼치기, 아래로 끌면 접기
+      if(y < dragStartY) collapseSheet(false);
+      else collapseSheet(true);
+    } else {
+      // 탭: 토글
+      collapseSheet(!panel.classList.contains('collapsed'));
+    }
+    dragStartY = null;
+  };
+
+  handle.addEventListener('touchstart', e=>onDown(e.touches[0].clientY), {passive:true});
+  handle.addEventListener('touchmove', e=>onMove(e.touches[0].clientY), {passive:true});
+  handle.addEventListener('touchend', e=>onUp(e.changedTouches[0].clientY));
+  handle.addEventListener('mousedown', e=>onDown(e.clientY));
+  window.addEventListener('mousemove', e=>onMove(e.clientY));
+  window.addEventListener('mouseup', e=>{ if(dragStartY!==null) onUp(e.clientY); });
+
+  // 검색창 포커스하면 자동으로 펼치기
+  document.getElementById('search').addEventListener('focus', ()=>collapseSheet(false));
 }
 
 let myMarker;
